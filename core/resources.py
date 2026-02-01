@@ -125,6 +125,12 @@ class RessourcesService:
             for spec in Specialite
             if spec != Specialite.AUCUNE
         }
+    
+    def affecter_medecin_consultation(self):
+        """
+        Affecte le médecin à la consultation.
+        """
+        self.medecin.affecter(Localisation.CONSULTATION)
 
     # ========================================================
     # Helpers RH
