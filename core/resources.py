@@ -1,44 +1,26 @@
-from typing import Dict
-from core.enums import Specialite
+from core.enums import Specialite, Localisation
 
 class UniteHospitaliere:
     def __init__(self, nom: Specialite, capacite_max: int):
         self.nom = nom
         self.capacite_max = capacite_max
-        self.patients_presents: int = 0
-        self.seuil_alerte = 0.9  # 90%
-
-    @property
-    def taux_occupation(self) -> float:
-        return self.patients_presents / self.capacite_max
+        self.patients_presents = 0
 
     @property
     def est_saturee(self) -> bool:
         return self.patients_presents >= self.capacite_max
 
-    @property
-    def alerte_seuil_atteint(self) -> bool:
-        return self.taux_occupation >= self.seuil_alerte
-
 class RessourcesService:
-    def __init__(self):
-        # Configuration conforme au system_model.md
-        self.boxes_disponibles = 3
-        self.medecin_disponible = True
-        self.infirmiers_salle = 2
+    def __init__(self, n_hospital_capacity: int = 10):
+        # Salles d'Attente (Capacités strictes Sujet 3)
+        self.capacites_sa = {Localisation.SA1: 5, Localisation.SA2: 10, Localisation.SA3: 5}
+        self.occupation_sa = {Localisation.SA1: 0, Localisation.SA2: 0, Localisation.SA3: 0}
         
-        # Unités de spécialité
-        self.unites: Dict[Specialite, UniteHospitaliere] = {
-            Specialite.CARDIOLOGIE: UniteHospitaliere(Specialite.CARDIOLOGIE, 5),
-            Specialite.NEUROLOGIE: UniteHospitaliere(Specialite.NEUROLOGIE, 5),
-            Specialite.PNEUMOLOGIE: UniteHospitaliere(Specialite.PNEUMOLOGIE, 5),
-            Specialite.ORTHOPEDIE: UniteHospitaliere(Specialite.ORTHOPEDIE, 5),
-        }
+        self.medecin_disponible = True
+        self.soins_critiques_occupes = 0 # Capacité souple
+        
+        self.unites = {spec: UniteHospitaliere(spec, n_hospital_capacity) for spec in Specialite if spec != Specialite.AUCUNE}
 
-    def occuper_box(self):
-        if self.boxes_disponibles > 0:
-            self.boxes_disponibles -= 1
-            
-    def liberer_box(self):
-        if self.boxes_disponibles < 3:
-            self.boxes_disponibles += 1
+    def modifier_occupation_sa(self, salle: Localisation, delta: int):
+        if salle in self.occupation_sa:
+            self.occupation_sa[salle] = max(0, self.occupation_sa[salle] + delta)
