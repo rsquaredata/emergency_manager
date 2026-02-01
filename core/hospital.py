@@ -1,30 +1,18 @@
-from typing import List, Dict
-from core.patient import Patient
-from core.resources import RessourcesService
-from core.enums import EtatPatient
+# core/hospital.py
 
 class HospitalSystem:
-    def __init__(self):
-        self.patients: Dict[str, Patient] = {}
-        self.ressources = RessourcesService()
-        self.horloge_interne = 0  # En minutes depuis le lancement
-
-    def ajouter_patient(self, patient: Patient):
-        self.patients[patient.id] = patient
-        patient.transition_to(EtatPatient.EN_ATTENTE, "Admis au service des urgences")
+    def __init__(self, capacite_n: int = 10):
+        self.patients = {}
+        # On passe N au service de ressources
+        self.ressources = RessourcesService(capacite_unites=capacite_n)
+        self.horloge_interne = 0
 
     def calculer_indice_saturation(self) -> float:
-        """Calcule l'IS défini dans system_model.md."""
-        p_actifs = [p for p in self.patients.values() if p.etat_courant != EtatPatient.SORTI]
-        if not p_actifs:
-            return 0.0
-        # IS = (Patients en attente + Patients en Box) / Nombre de Box
-        en_attente = len([p for p in p_actifs if p.etat_courant == EtatPatient.EN_ATTENTE])
-        en_box = 3 - self.ressources.boxes_disponibles
-        return round((en_attente + en_box) / 3, 2)
-
-    def tick(self):
-        """Fait avancer la simulation d'une minute."""
-        self.horloge_interne += 1
-        # Cette méthode sera appelée par la boucle principale
-        # et déclenchera le scheduler
+        """
+        IS = (Patients en SA1+SA2+SA3 + Patients en Soins Critiques) / (Capacité totale SA)
+        """
+        en_attente = sum(self.ressources.occupation_salles.values())
+        en_soins = self.ressources.patients_en_soins_critiques
+        capacite_totale_sa = sum(self.ressources.capacites_salles.values()) # 30
+        
+        return round((en_attente + en_soins) / capacite_totale_sa, 2)
