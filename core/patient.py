@@ -22,6 +22,9 @@ class Patient:
 
         self.historique: List[Dict] = []
 
+        self.tick_entree: int | None = None
+        self.duree_sejour: int | None = None
+
         self._log_transition(
             etat=self.etat_courant,
             localisation=self.localisation_courante,
