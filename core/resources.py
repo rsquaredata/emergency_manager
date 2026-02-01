@@ -53,7 +53,7 @@ class SalleAttente:
         self.capacite_max = capacite_max
         self.occupation = 0
 
-        # Gestion RH
+        # Gestion RH (présence indicative)
         self.personnel_present = False
         self.derniere_presence_personnel = None
 
@@ -79,6 +79,10 @@ class SalleAttente:
 
 
 class UniteHospitaliere:
+    """
+    Unité d'hospitalisation aval.
+    """
+
     def __init__(self, specialite: Specialite, capacite_max: int):
         self.specialite = specialite
         self.capacite_max = capacite_max
@@ -103,37 +107,40 @@ class UniteHospitaliere:
 
 class RessourcesService:
     """
-    Source unique de vérité pour les ressources.
+    Source unique de vérité pour les ressources du service.
     """
 
     def __init__(self, capacite_unite: int = 5):
-        # RH
+        # -------------------------
+        # Ressources humaines
+        # -------------------------
         self.medecin = Medecin("medecin_1")
         self.infirmiers = [Infirmier("inf_1"), Infirmier("inf_2")]
         self.aides_soignants = [AideSoignant("as_1"), AideSoignant("as_2")]
 
+        # -------------------------
         # Salles d'attente
+        # -------------------------
         self.salles_attente = {
             Localisation.SA1: SalleAttente(Localisation.SA1, 5),
             Localisation.SA2: SalleAttente(Localisation.SA2, 10),
             Localisation.SA3: SalleAttente(Localisation.SA3, 5),
         }
 
-        # Unités
+        # -------------------------
+        # Unités aval
+        # -------------------------
         self.unites = {
             spec: UniteHospitaliere(spec, capacite_unite)
             for spec in Specialite
             if spec != Specialite.AUCUNE
         }
-    
-    def affecter_medecin_consultation(self):
-        """
-        Affecte le médecin à la consultation.
-        """
-        self.medecin.affecter(Localisation.CONSULTATION)
-    
-    def liberer_medecin(self):
-        self.medecin.liberer()
+
+        # -------------------------
+        # Soins critiques
+        # -------------------------
+        self.capacite_soins_critiques = 8
+        self.occupation_soins_critiques = 0
 
     # ========================================================
     # Helpers RH
@@ -151,12 +158,34 @@ class RessourcesService:
     def aide_soignant_disponible(self) -> bool:
         return any(a.est_disponible for a in self.aides_soignants)
 
+    def affecter_medecin_consultation(self):
+        self.medecin.affecter(Localisation.CONSULTATION)
+
+    def liberer_medecin(self):
+        self.medecin.liberer()
+
+    def affecter_personnel_salle(self, localisation: Localisation):
+        """
+        Affecte un infirmier sinon un aide-soignant à une salle.
+        """
+        for inf in self.infirmiers:
+            if inf.est_disponible:
+                inf.affecter(localisation)
+                self.salles_attente[localisation].enregistrer_presence_personnel()
+                return
+
+        for asg in self.aides_soignants:
+            if asg.est_disponible:
+                asg.affecter(localisation)
+                self.salles_attente[localisation].enregistrer_presence_personnel()
+                return
+
+        # Pas bloquant pour le modèle (présence tolérée < 15 min)
+        self.salles_attente[localisation].enregistrer_absence_personnel()
+
     # ========================================================
     # Helpers salles d'attente
     # ========================================================
-
-    def salle_disponible(self, localisation: Localisation) -> bool:
-        return not self.salles_attente[localisation].est_saturee
 
     def entrer_en_salle_attente(self, localisation: Localisation):
         self.salles_attente[localisation].entrer()
@@ -169,3 +198,21 @@ class RessourcesService:
             loc: salle.occupation
             for loc, salle in self.salles_attente.items()
         }
+
+    # ========================================================
+    # Soins critiques
+    # ========================================================
+
+    def soins_critiques_disponibles(self) -> bool:
+        return self.occupation_soins_critiques < self.capacite_soins_critiques
+
+    def admettre_soins_critiques(self):
+        if not self.soins_critiques_disponibles():
+            raise RuntimeError("Soins critiques saturés")
+        self.occupation_soins_critiques += 1
+
+    def liberer_soins_critiques(self):
+        self.occupation_soins_critiques = max(
+            0,
+            self.occupation_soins_critiques - 1
+        )
