@@ -1,87 +1,56 @@
-from datetime import datetime, timedelta
-from typing import Dict, Optional
-
-from core.patient import Patient
+from datetime import datetime
+from core.enums import EtatPatient, Localisation
 from core.resources import RessourcesService
-from core.enums import EtatPatient
 
 
 class HospitalSystem:
     """
-    État global du service d'urgences.
-
-    Responsabilités :
-    - stocker les patients
-    - stocker les ressources
-    - gérer le temps simulé
-    - calculer les métriques (IS)
+    Représente l'état global du service d'urgences.
+    Source unique de vérité pour :
+    - les patients
+    - les ressources
+    - les métriques
     """
 
-    def __init__(
-        self,
-        capacite_unite: int = 5,
-        minutes_par_tick: int = 5,
-        start_time: Optional[datetime] = None,
-    ):
+    def __init__(self, capacite_unite: int = 5):
         # -------------------------
-        # État global
+        # Temps de simulation
         # -------------------------
-        self.patients: Dict[str, Patient] = {}
+        self.tick = 0
+        self.now = datetime.now()
+
+        # -------------------------
+        # État système
+        # -------------------------
+        self.patients = {}
         self.ressources = RessourcesService(capacite_unite=capacite_unite)
 
-        # -------------------------
-        # Temps simulé
-        # -------------------------
-        self.minutes_par_tick = minutes_par_tick
-        self.tick = 0
-
-        self.start_time = start_time or datetime.now()
-        self.now = self.start_time
-
     # ========================================================
-    # Gestion du temps
+    # Gestion du temps (simulation)
     # ========================================================
 
-    def avancer_d_un_tick(self):
+    def avancer_temps(self, tick: int):
         """
-        Avance le temps simulé d'un tick.
-        1 tick = minutes_par_tick minutes simulées.
+        Synchronise le temps logique de la simulation.
         """
-        self.tick += 1
-        self.now = self.start_time + timedelta(
-            minutes=self.tick * self.minutes_par_tick
-        )
+        self.tick = tick
+        self.now = datetime.now()
 
     # ========================================================
     # Gestion des patients
     # ========================================================
 
-    def ajouter_patient(self, patient: Patient):
+    def ajouter_patient(self, patient):
         self.patients[patient.id] = patient
 
-    def retirer_patient(self, patient_id: str):
-        if patient_id in self.patients:
-            del self.patients[patient_id]
-
-    def patients_actifs(self):
-        """
-        Patients encore dans le système.
-        """
-        return [
-            p for p in self.patients.values()
-            if p.etat_courant not in {
-                EtatPatient.SORTI,
-                EtatPatient.ORIENTE_EXTERIEUR,
-            }
-        ]
-
     # ========================================================
-    # Métriques
+    # MÉTRIQUES — INDICES DE SATURATION
     # ========================================================
 
     def calculer_is_sa(self) -> float:
         """
-        IS_SA = occupation totale des salles d'attente / capacité totale des salles d'attente
+        IS_SA = occupation totale des salles d'attente
+                / capacité totale des salles d'attente
         Indicateur local, borné.
         """
         occupation = self.ressources.occupation_sa()
@@ -96,10 +65,10 @@ class HospitalSystem:
             return 0.0
 
         return round(total_occ / total_cap, 2)
-    
+
     def calculer_is_global(self) -> float:
         """
-        IS_GLOBAL = backlog / capacité d'absorption totale.
+        IS_GLOBAL = backlog / capacité d'absorption totale
         Indicateur débordant.
         """
         backlog = sum(
@@ -109,58 +78,41 @@ class HospitalSystem:
                 EtatPatient.ATTENTE_TRANSFERT,
             ]
         )
+
         cap_sa = sum(
-            salle.capacite_max for salle in self.ressources.salles_attente.values()
+            salle.capacite_max
+            for salle in self.ressources.salles_attente.values()
         )
+
         cap_aval = sum(
-            unite.capacite_max for unite in self.ressources.unites.values()
+            unite.capacite_max
+            for unite in self.ressources.unites.values()
         )
+
         denom = cap_sa + cap_aval
         return round(backlog / denom, 2) if denom > 0 else 0.0
-    
+
     def calculer_overflow_aval(self) -> float:
         """
-        Overflow aval = patients en attente de transfert / capacité totale des unités aval
+        Overflow aval = patients en attente de transfert
+                        / capacité totale des unités aval
         """
         attente_transfert = sum(
             1 for p in self.patients.values()
             if p.etat_courant == EtatPatient.ATTENTE_TRANSFERT
         )
+
         cap_aval = sum(
-            unite.capacite_max for unite in self.ressources.unites.values()
+            unite.capacite_max
+            for unite in self.ressources.unites.values()
         )
+
         return round(attente_transfert / cap_aval, 2) if cap_aval > 0 else 0.0
 
-    def snapshot_etat(self) -> dict:
-        """
-        État compact du système à un instant donné.
-        Sert de base unique pour logs, ML, visualisation.
-        """
-        return {
-            "tick": self.tick,
-            "time": self.now.isoformat(),
+    # ========================================================
+    # COMPTEURS PATIENTS (features ML)
+    # ========================================================
 
-            # Indicateurs
-            "is_sa": self.calculer_is_sa(),
-            "is_global": self.calculer_is_global(),
-            "overflow_aval": self.calculer_overflow_aval(),
-
-            # Occupations
-            "occupation_sa": {
-                loc.value: salle.occupation
-                for loc, salle in self.ressources.salles_attente.items()
-            },
-            "unites": {
-                spec.value: unite.patients_presents
-                for spec, unite in self.ressources.unites.items()
-            },
-
-            # Ressources humaines
-            "medecin_disponible": self.ressources.medecin_disponible,
-            "infirmier_disponible": self.ressources.infirmier_disponible,
-            "aide_soignant_disponible": self.ressources.aide_soignant_disponible,
-        }
-    
     def _compter_patients_par_etat(self) -> dict:
         compteurs = {
             EtatPatient.ARRIVE: 0,
@@ -177,3 +129,65 @@ class HospitalSystem:
                 compteurs[p.etat_courant] += 1
 
         return compteurs
+
+    def _compteurs_derives(self) -> dict:
+        c = self._compter_patients_par_etat()
+
+        return {
+            "nb_patients_total": len(self.patients),
+            "nb_en_attente": c[EtatPatient.EN_ATTENTE],
+            "nb_en_consultation": c[EtatPatient.EN_CONSULTATION],
+            "nb_attente_transfert": c[EtatPatient.ATTENTE_TRANSFERT],
+            "nb_en_unite": c[EtatPatient.EN_UNITE],
+            "nb_sortis": c[EtatPatient.SORTI],
+        }
+
+    # ========================================================
+    # OCCUPATION DES RESSOURCES
+    # ========================================================
+
+    def _occupation_ressources(self) -> dict:
+        occupation_sa = self.ressources.occupation_sa()
+
+        occupation_unites = {
+            spec.value: unite.patients_presents
+            for spec, unite in self.ressources.unites.items()
+        }
+
+        return {
+            "occupation_sa_total": sum(occupation_sa.values()),
+            "occupation_sa1": occupation_sa.get(Localisation.SA1, 0),
+            "occupation_sa2": occupation_sa.get(Localisation.SA2, 0),
+            "occupation_sa3": occupation_sa.get(Localisation.SA3, 0),
+            "occupation_unites_total": sum(occupation_unites.values()),
+            **occupation_unites,
+        }
+
+    # ========================================================
+    # SNAPSHOT GLOBAL (BASE ML)
+    # ========================================================
+
+    def snapshot_etat(self) -> dict:
+        """
+        État global du système à un instant t.
+        Chaque snapshot = 1 ligne de dataset ML.
+        """
+        snapshot = {
+            "tick": self.tick,
+            "time": self.now.isoformat(),
+
+            # Indicateurs globaux
+            "is_sa": self.calculer_is_sa(),
+            "is_global": self.calculer_is_global(),
+            "overflow_aval": self.calculer_overflow_aval(),
+
+            # Ressources humaines (binaire, ML-friendly)
+            "medecin_disponible": int(self.ressources.medecin_disponible),
+            "infirmier_disponible": int(self.ressources.infirmier_disponible),
+            "aide_soignant_disponible": int(self.ressources.aide_soignant_disponible),
+        }
+
+        snapshot.update(self._compteurs_derives())
+        snapshot.update(self._occupation_ressources())
+
+        return snapshot
