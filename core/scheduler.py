@@ -1,49 +1,184 @@
-from core.enums import EtatPatient, Localisation, Gravite
-from core.constraints import peut_entrer_en_sa, peut_aller_en_unite
+from core.enums import (
+    EtatPatient,
+    Localisation,
+    Gravite,
+)
+from core.constraints import (
+    doit_etre_oriente_exterieur,
+    peut_entrer_en_soins_critiques,
+    peut_entrer_en_consultation,
+    peut_entrer_en_salle_attente,
+    peut_aller_en_attente_transfert,
+    peut_etre_transfere_en_unite,
+)
+from core.patient import Patient
+from core.hospital import HospitalSystem
+
 
 class Scheduler:
-    def __init__(self, hospital):
+    """
+    Ordonnanceur déterministe de référence.
+    Applique exclusivement les règles définies dans constraints.py
+    """
+
+    def __init__(self, hospital: HospitalSystem):
         self.hospital = hospital
 
-    def trier_priorites(self, salle_loc: Localisation):
-        # Liste des patients dans une SA spécifique
-        patients = [p for p in self.hospital.patients.values() if p.localisation_courante == salle_loc]
-        return sorted(patients, key=lambda x: x.get_score_priorite(), reverse=True)
+    # ========================================================
+    # Ordonnancement principal (1 tick de simulation)
+    # ========================================================
 
     def executer_cycle(self):
-        # 1. Triage IOA vers flux directs ou SA
-        for p in [p for p in self.hospital.patients.values() if p.etat_courant == EtatPatient.ARRIVE]:
-            if p.gravite == Gravite.ROUGE:
-                p.transition_to(EtatPatient.SOINS_CRITIQUES, Localisation.SOINS_CRITIQUES, "Direct IOA -> Soins Critiques")
-            elif p.gravite == Gravite.VERT and self.hospital.ressources.medecin_disponible:
-                p.transition_to(EtatPatient.EN_CONSULTATION, Localisation.CONSULTATION, "Direct IOA -> Consultation")
-            else:
-                # Tentative SA par défaut ou logique spécifique
-                for sa_loc in [Localisation.SA3, Localisation.SA2, Localisation.SA1]:
-                    if peut_entrer_en_sa(sa_loc, self.hospital.ressources):
-                        self.hospital.ressources.modifier_occupation_sa(sa_loc, 1)
-                        p.transition_to(EtatPatient.EN_ATTENTE, sa_loc, f"IOA -> {sa_loc.value}")
-                        break
+        """
+        Exécute un cycle complet de décisions :
+        1. Orientation initiale (IOA)
+        2. Accès consultation ou SA
+        3. Transferts vers unités si possible
+        """
 
-        # 2. Flux Stagnation SA -> Unités
-        for p in [p for p in self.hospital.patients.values() if p.etat_courant == EtatPatient.ATTENTE_TRANSFERT]:
-            if peut_aller_en_unite(p, self.hospital.ressources):
-                self.hospital.ressources.modifier_occupation_sa(p.localisation_courante, -1)
-                self.hospital.ressources.unites[p.specialite_requise].patients_presents += 1
-                p.transition_to(EtatPatient.EN_UNITE, Localisation.UNITE, "SA -> Hôpital (Lit libéré)")
+        self._traiter_arrivees()
+        self._traiter_transferts_unites()
 
-    def simuler_orientation(self, patient_id: str, hospitalisation: bool):
-        p = self.hospital.patients[patient_id]
-        # Libération de la zone de soin
-        if p.localisation_courante == Localisation.CONSULTATION:
-            pass # Libère médecin si besoin
-            
+    # ========================================================
+    # Étape 1 — Arrivées et triage IOA
+    # ========================================================
+
+    def _traiter_arrivees(self):
+        for patient in self._patients_par_etat(EtatPatient.ARRIVE):
+
+            # Cas GRIS : sortie immédiate
+            if doit_etre_oriente_exterieur(patient):
+                patient.transition_to(
+                    EtatPatient.ORIENTE_EXTERIEUR,
+                    Localisation.EXTERIEUR,
+                    "Patient GRIS orienté hors système",
+                )
+                continue
+
+            # Cas ROUGE : soins critiques directs
+            if peut_entrer_en_soins_critiques(patient):
+                patient.transition_to(
+                    EtatPatient.SOINS_CRITIQUES,
+                    Localisation.SOINS_CRITIQUES,
+                    "Urgence vitale détectée (ROUGE)",
+                )
+                continue
+
+            # Cas VERT / JAUNE : consultation prioritaire
+            if peut_entrer_en_consultation(self.hospital.ressources):
+                # Affectation médecin + personnel
+                self.hospital.ressources.affecter_medecin_consultation()
+                self.hospital.ressources.affecter_personnel_salle(
+                    Localisation.CONSULTATION
+                )
+
+                patient.transition_to(
+                    EtatPatient.EN_CONSULTATION,
+                    Localisation.CONSULTATION,
+                    "Accès direct à la consultation",
+                )
+                continue
+
+            # Sinon : passage en salle d'attente (ordre SA3 -> SA2 -> SA1)
+            self._placer_en_salle_attente(patient)
+
+    # ========================================================
+    # Étape 2 — Transferts vers unités hospitalières
+    # ========================================================
+
+    def _traiter_transferts_unites(self):
+        for patient in self._patients_par_etat(EtatPatient.ATTENTE_TRANSFERT):
+
+            if peut_etre_transfere_en_unite(patient, self.hospital.ressources):
+                # Libération SA
+                if patient.est_en_salle_attente():
+                    self.hospital.ressources.sortir_de_salle_attente(
+                        patient.localisation_courante
+                    )
+
+                # Admission unité
+                unite = self.hospital.ressources.unites[
+                    patient.specialite_requise
+                ]
+                unite.admettre_patient()
+
+                patient.transition_to(
+                    EtatPatient.EN_UNITE,
+                    Localisation.UNITE,
+                    "Transfert effectif vers unité hospitalière",
+                )
+
+    # ========================================================
+    # Helpers internes
+    # ========================================================
+
+    def _placer_en_salle_attente(self, patient: Patient):
+        """
+        Place un patient dans la première salle d'attente disponible.
+        """
+        for salle in [
+            Localisation.SA3,
+            Localisation.SA2,
+            Localisation.SA1,
+        ]:
+            if peut_entrer_en_salle_attente(salle, self.hospital.ressources):
+                self.hospital.ressources.entrer_en_salle_attente(salle)
+                self.hospital.ressources.affecter_personnel_salle(salle)
+
+                patient.transition_to(
+                    EtatPatient.EN_ATTENTE,
+                    salle,
+                    f"Placement en {salle.value}",
+                )
+                return
+
+        # Cas extrême : aucune SA disponible
+        patient.transition_to(
+            EtatPatient.EN_ATTENTE,
+            Localisation.EXTERIEUR,
+            "Aucune salle d'attente disponible (saturation totale)",
+        )
+
+    def _patients_par_etat(self, etat: EtatPatient):
+        return [
+            p for p in self.hospital.patients.values()
+            if p.etat_courant == etat
+        ]
+
+    # ========================================================
+    # Orientation post-consultation (appel explicite)
+    # ========================================================
+
+    def orienter_apres_consultation(
+        self,
+        patient_id: str,
+        hospitalisation: bool,
+    ):
+        """
+        Applique la décision médicale après consultation.
+        """
+        patient = self.hospital.patients[patient_id]
+
+        # Libération ressources consultation
+        if patient.localisation_courante == Localisation.CONSULTATION:
+            self.hospital.ressources.liberer_medecin()
+            # NOTE : libération personnel salle possible ici
+
         if hospitalisation:
-            # Règle schéma : Orientation -> SA (Stagnation)
-            for sa_loc in [Localisation.SA2, Localisation.SA3, Localisation.SA1]:
-                if peut_entrer_en_sa(sa_loc, self.hospital.ressources):
-                    self.hospital.ressources.modifier_occupation_sa(sa_loc, 1)
-                    p.transition_to(EtatPatient.ATTENTE_TRANSFERT, sa_loc, "Besoin Hospitalisation -> SA")
-                    break
+            if not peut_aller_en_attente_transfert(patient):
+                raise RuntimeError(
+                    "Transfert interdit : consultation préalable absente"
+                )
+
+            self._placer_en_salle_attente(patient)
+            patient.transition_to(
+                EtatPatient.ATTENTE_TRANSFERT,
+                patient.localisation_courante,
+                "Décision hospitalisation prise",
+            )
         else:
-            p.transition_to(EtatPatient.SORTI, Localisation.EXTERIEUR, "Orientation -> SORTIE")
+            patient.transition_to(
+                EtatPatient.SORTI,
+                Localisation.EXTERIEUR,
+                "Consultation terminée – sortie",
+            )
