@@ -1,32 +1,45 @@
 from enum import IntEnum, Enum
 
+
 class Gravite(IntEnum):
-    GRIS = 0
-    VERT = 1
-    JAUNE = 2
-    ROUGE = 3
+    GRIS = 0      # Orientation externe
+    VERT = 1      # Non urgent
+    JAUNE = 2     # Urgent non vital
+    ROUGE = 3     # Urgence vitale
+
 
 class EtatPatient(Enum):
-    ARRIVE = "ARRIVÉ"
-    EN_ATTENTE = "EN_ATTENTE"  # Dans une des 3 Salles d'Attente
-    EN_CONSULTATION = "ZONE_CONSULTATION"
-    SOINS_CRITIQUES = "SOINS_CRITIQUES"
-    ATTENTE_TRANSFERT = "ATTENTE_TRANSFERT" # Cas de stagnation en SA
-    EN_UNITE = "HÔPITAL_UNITE"
-    SORTI = "SORTIE"
+    ARRIVE = "ARRIVE"
+
+    EN_ATTENTE = "EN_ATTENTE"                # Salle d'attente (SA1, SA2, SA3)
+    EN_CONSULTATION = "EN_CONSULTATION"      # Consultation médicale
+    EN_EXAMEN = "EN_EXAMEN"                  # Examens complémentaires
+
+    SOINS_CRITIQUES = "SOINS_CRITIQUES"      # Urgence vitale directe
+
+    ATTENTE_TRANSFERT = "ATTENTE_TRANSFERT"  # Décision d'hospitalisation prise, lit indisponible
+    EN_UNITE = "EN_UNITE"                    # Hospitalisation effective
+
+    ORIENTE_EXTERIEUR = "ORIENTE_EXTERIEUR"  # Cas GRIS
+    SORTI = "SORTI"
+
 
 class Localisation(Enum):
     SA1 = "SA1"
     SA2 = "SA2"
     SA3 = "SA3"
-    CONSULTATION = "Consultation"
-    SOINS_CRITIQUES = "Soins Critiques"
-    UNITE = "Unité Hospitalière"
-    EXTERIEUR = "Extérieur"
+
+    CONSULTATION = "CONSULTATION"
+    EXAMEN = "EXAMEN"
+    SOINS_CRITIQUES = "SOINS_CRITIQUES"
+
+    UNITE = "UNITE"
+    EXTERIEUR = "EXTERIEUR"
+
 
 class Specialite(Enum):
-    CARDIOLOGIE = "Cardiologie"
-    NEUROLOGIE = "Neurologie"
-    PNEUMOLOGIE = "Pneumologie"
-    ORTHOPEDIE = "Orthopédie"
-    AUCUNE = "Aucune"
+    CARDIOLOGIE = "CARDIOLOGIE"
+    NEUROLOGIE = "NEUROLOGIE"
+    PNEUMOLOGIE = "PNEUMOLOGIE"
+    ORTHOPEDIE = "ORTHOPEDIE"
+    AUCUNE = "AUCUNE"
