@@ -1,3 +1,4 @@
+from datetime import datetime
 from core.enums import Localisation, Specialite
 
 
@@ -6,14 +7,9 @@ from core.enums import Localisation, Specialite
 # ============================================================
 
 class RessourceHumaine:
-    """
-    Classe de base pour toute ressource humaine.
-    Une ressource ne peut être affectée qu'à un seul poste à la fois.
-    """
-
     def __init__(self, identifiant: str):
         self.id = identifiant
-        self.affectation = None  # type: Localisation | None
+        self.affectation = None
 
     @property
     def est_disponible(self) -> bool:
@@ -48,13 +44,18 @@ class AideSoignant(RessourceHumaine):
 
 class SalleAttente:
     """
-    Salle d'attente à capacité STRICTE.
+    Salle d'attente à capacité stricte.
+    Le personnel est affecté à la salle, pas aux patients.
     """
 
     def __init__(self, localisation: Localisation, capacite_max: int):
         self.localisation = localisation
         self.capacite_max = capacite_max
         self.occupation = 0
+
+        # Gestion RH
+        self.personnel_present = False
+        self.derniere_presence_personnel = None
 
     @property
     def est_saturee(self) -> bool:
@@ -68,12 +69,16 @@ class SalleAttente:
     def sortir(self):
         self.occupation = max(0, self.occupation - 1)
 
+    def enregistrer_presence_personnel(self):
+        self.personnel_present = True
+        self.derniere_presence_personnel = datetime.now()
+
+    def enregistrer_absence_personnel(self):
+        self.personnel_present = False
+        self.derniere_presence_personnel = datetime.now()
+
 
 class UniteHospitaliere:
-    """
-    Unité aval avec capacité maximale de lits.
-    """
-
     def __init__(self, specialite: Specialite, capacite_max: int):
         self.specialite = specialite
         self.capacite_max = capacite_max
@@ -98,44 +103,31 @@ class UniteHospitaliere:
 
 class RessourcesService:
     """
-    Conteneur de TOUTES les ressources du service d'urgences.
-    Source unique de vérité pour la disponibilité.
+    Source unique de vérité pour les ressources.
     """
 
     def __init__(self, capacite_unite: int = 5):
-        # -------------------------
-        # Ressources humaines
-        # -------------------------
+        # RH
         self.medecin = Medecin("medecin_1")
-        self.infirmiers = [
-            Infirmier("inf_1"),
-            Infirmier("inf_2"),
-        ]
-        self.aides_soignants = [
-            AideSoignant("as_1"),
-            AideSoignant("as_2"),
-        ]
+        self.infirmiers = [Infirmier("inf_1"), Infirmier("inf_2")]
+        self.aides_soignants = [AideSoignant("as_1"), AideSoignant("as_2")]
 
-        # -------------------------
         # Salles d'attente
-        # -------------------------
         self.salles_attente = {
-            Localisation.SA1: SalleAttente(Localisation.SA1, capacite_max=5),
-            Localisation.SA2: SalleAttente(Localisation.SA2, capacite_max=10),
-            Localisation.SA3: SalleAttente(Localisation.SA3, capacite_max=5),
+            Localisation.SA1: SalleAttente(Localisation.SA1, 5),
+            Localisation.SA2: SalleAttente(Localisation.SA2, 10),
+            Localisation.SA3: SalleAttente(Localisation.SA3, 5),
         }
 
-        # -------------------------
-        # Unités hospitalières
-        # -------------------------
+        # Unités
         self.unites = {
-            spec: UniteHospitaliere(spec, capacite_max=capacite_unite)
+            spec: UniteHospitaliere(spec, capacite_unite)
             for spec in Specialite
             if spec != Specialite.AUCUNE
         }
 
     # ========================================================
-    # Helpers ressources humaines
+    # Helpers RH
     # ========================================================
 
     @property
@@ -144,42 +136,17 @@ class RessourcesService:
 
     @property
     def infirmier_disponible(self) -> bool:
-        return any(inf.est_disponible for inf in self.infirmiers)
+        return any(i.est_disponible for i in self.infirmiers)
 
     @property
     def aide_soignant_disponible(self) -> bool:
-        return any(asg.est_disponible for asg in self.aides_soignants)
-
-    def affecter_medecin_consultation(self):
-        self.medecin.affecter(Localisation.CONSULTATION)
-
-    def liberer_medecin(self):
-        self.medecin.liberer()
-
-    def affecter_personnel_salle(self, localisation: Localisation):
-        """
-        Affecte en priorité un infirmier, sinon un aide-soignant.
-        """
-        for inf in self.infirmiers:
-            if inf.est_disponible:
-                inf.affecter(localisation)
-                return
-
-        for asg in self.aides_soignants:
-            if asg.est_disponible:
-                asg.affecter(localisation)
-                return
-
-        raise RuntimeError("Aucun personnel disponible pour la salle")
+        return any(a.est_disponible for a in self.aides_soignants)
 
     # ========================================================
     # Helpers salles d'attente
     # ========================================================
 
     def salle_disponible(self, localisation: Localisation) -> bool:
-        """
-        Indique si une salle d'attente a encore de la capacité.
-        """
         return not self.salles_attente[localisation].est_saturee
 
     def entrer_en_salle_attente(self, localisation: Localisation):
@@ -189,9 +156,6 @@ class RessourcesService:
         self.salles_attente[localisation].sortir()
 
     def occupation_sa(self) -> dict:
-        """
-        Retourne l'occupation actuelle des SA (utile pour métriques).
-        """
         return {
             loc: salle.occupation
             for loc, salle in self.salles_attente.items()
