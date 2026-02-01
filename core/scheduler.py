@@ -11,6 +11,7 @@ from core.constraints import (
     peut_etre_transfere_en_unite,
 )
 from core.patient import Patient
+from core.stay import tirer_duree_sejour, TypeSejour
 
 
 class Scheduler:
@@ -35,6 +36,7 @@ class Scheduler:
         """
         self._traiter_arrivees()
         self._traiter_transferts_unites()
+        self._traiter_sorties()
 
     # ============================================================
     # Étape 1 — Arrivées et triage IOA
@@ -56,12 +58,18 @@ class Scheduler:
 
             # ROUGE -> soins critiques
             if peut_entrer_en_soins_critiques(patient):
+                patient.tick_entree = self.hospital.tick
+                patient.duree_sejour = tirer_duree_sejour(
+                    TypeSejour.SOINS_CRITIQUES
+                )
+
                 patient.transition_to(
                     EtatPatient.SOINS_CRITIQUES,
                     Localisation.SOINS_CRITIQUES,
                     "Urgence vitale détectée (ROUGE)",
                 )
                 continue
+
 
             # VERT/JAUNE -> consultation prioritaire si possible
             if peut_entrer_en_consultation(self.hospital.ressources):
@@ -167,8 +175,50 @@ class Scheduler:
                 unite = self.hospital.ressources.unites[patient.specialite_requise]
                 unite.admettre_patient()
 
+                patient.tick_entree = self.hospital.tick
+                patient.duree_sejour = tirer_duree_sejour(
+                TypeSejour.UNITE
+                )
+
                 patient.transition_to(
                     EtatPatient.EN_UNITE,
                     Localisation.UNITE,
                     "Transfert vers unité hospitalière",
+                )
+
+    # ============================================================
+    # Sorties d'hospitalisation
+    # ============================================================
+
+    def _traiter_sorties(self):
+        """
+        Gère les sorties des patients après durée de séjour (unités et soins critiques).
+        """
+        for patient in self.hospital.patients.values():
+
+            if patient.etat_courant not in (
+                EtatPatient.EN_UNITE,
+                EtatPatient.SOINS_CRITIQUES,
+            ):
+                continue
+
+            if patient.tick_entree is None or patient.duree_sejour is None:
+                continue
+
+            if self.hospital.tick - patient.tick_entree >= patient.duree_sejour:
+
+                # Libération ressources
+                if patient.etat_courant == EtatPatient.EN_UNITE:
+                    unite = self.hospital.ressources.unites[
+                        patient.specialite_requise
+                    ]
+                    unite.liberer_lit()
+
+                elif patient.etat_courant == EtatPatient.SOINS_CRITIQUES:
+                    self.hospital.ressources.liberer_soins_critiques()
+
+                patient.transition_to(
+                    EtatPatient.SORTI,
+                    Localisation.EXTERIEUR,
+                    "Sortie après durée de séjour",
                 )
