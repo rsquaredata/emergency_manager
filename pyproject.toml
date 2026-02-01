@@ -7,7 +7,7 @@ name = "emergency-manager"
 version = "0.1.0"
 description = "Agent-based emergency department logistics system (academic project)"
 authors = [
-    { name = "Rina", email = "rina@example.com" }
+    { name = "Rina", email = "rsquaredata@icloud.com" }
 ]
 readme = "README.md"
 requires-python = ">=3.11"
