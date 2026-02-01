@@ -1,24 +1,8 @@
-from enum import IntEnum, Enum
-
-class Gravite(IntEnum):
-    GRIS = 0
-    VERT = 1
-    JAUNE = 2
-    ROUGE = 3
-
 class EtatPatient(Enum):
     ARRIVE = "ARRIVÉ"
-    EN_ATTENTE = "EN_ATTENTE"
-    EN_CONSULTATION = "EN_CONSULTATION"
-    EN_EXAMEN = "EN_EXAMEN"
-    EN_ATTENTE_TRANSFERT = "EN_ATTENTE_TRANSFERT"
-    EN_UNITE = "EN_UNITÉ"
-    SORTI = "SORTI"
-    ORIENTE_EXTERIEUR = "ORIENTÉ_EXTÉRIEUR"
-
-class Specialite(Enum):
-    CARDIOLOGIE = "Cardiologie"
-    NEUROLOGIE = "Neurologie"
-    PNEUMOLOGIE = "Pneumologie"
-    ORTHOPEDIE = "Orthopédie"
-    AUCUNE = "Aucune"
+    EN_ATTENTE = "EN_ATTENTE" # Dans l'une des 3 SA
+    EN_CONSULTATION = "ZONE_CONSULTATION"
+    SOINS_CRITIQUES = "SOINS_CRITIQUES" # Nouveau bloc
+    EN_ATTENTE_TRANSFERT = "ATTENTE_TRANSFERT" # Retour en SA
+    EN_UNITE = "HÔPITAL_UNITE"
+    SORTI = "SORTIE" # Libellé unique
