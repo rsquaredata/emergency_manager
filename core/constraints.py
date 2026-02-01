@@ -1,14 +1,15 @@
+from datetime import datetime, timedelta
+
 from core.enums import (
     Localisation,
     Gravite,
-    Specialite,
 )
 from core.patient import Patient
 from core.resources import RessourcesService
 
 
 # ============================================================
-# Contraintes sur les salles d'attente
+# Contraintes salles d'attente (capacités physiques)
 # ============================================================
 
 def peut_entrer_en_salle_attente(
@@ -16,23 +17,22 @@ def peut_entrer_en_salle_attente(
     ressources: RessourcesService,
 ) -> bool:
     """
-    Vérifie si une salle d'attente peut accueillir un patient.
-    Contrainte stricte : capacité maximale non dépassable.
+    Contrainte stricte :
+    - la salle ne doit pas être saturée physiquement.
+    Les ressources humaines ne bloquent PAS l'entrée.
     """
     return ressources.salle_disponible(salle)
 
 
 # ============================================================
-# Contraintes consultation médicale
+# Contraintes consultation
 # ============================================================
 
 def peut_entrer_en_consultation(
     ressources: RessourcesService,
 ) -> bool:
     """
-    Une consultation nécessite :
-    - un médecin disponible
-    - aucun doublon d'affectation
+    Une consultation nécessite un médecin disponible.
     """
     return ressources.medecin_disponible
 
@@ -41,13 +41,10 @@ def peut_entrer_en_consultation(
 # Contraintes soins critiques
 # ============================================================
 
-def peut_entrer_en_soins_critiques(
-    patient: Patient,
-) -> bool:
+def peut_entrer_en_soins_critiques(patient: Patient) -> bool:
     """
-    Règle du modèle :
-    - seuls les patients ROUGE peuvent entrer directement
-      en soins critiques.
+    Seuls les patients ROUGE peuvent entrer directement
+    en soins critiques.
     """
     return patient.gravite == Gravite.ROUGE
 
@@ -56,9 +53,7 @@ def peut_entrer_en_soins_critiques(
 # Contraintes orientation externe
 # ============================================================
 
-def doit_etre_oriente_exterieur(
-    patient: Patient,
-) -> bool:
+def doit_etre_oriente_exterieur(patient: Patient) -> bool:
     """
     Les patients GRIS sont orientés hors du système.
     """
@@ -69,12 +64,10 @@ def doit_etre_oriente_exterieur(
 # Contraintes hospitalisation / unités aval
 # ============================================================
 
-def peut_aller_en_attente_transfert(
-    patient: Patient,
-) -> bool:
+def peut_aller_en_attente_transfert(patient: Patient) -> bool:
     """
-    Contrainte STRICTE du modèle :
-    - le patient doit avoir consulté
+    Contrainte stricte :
+    - le patient doit avoir consulté.
     """
     return patient.a_consulte()
 
@@ -84,8 +77,8 @@ def peut_etre_transfere_en_unite(
     ressources: RessourcesService,
 ) -> bool:
     """
-    Conditions nécessaires pour un transfert effectif :
-    - consultation préalable obligatoire
+    Conditions de transfert effectif :
+    - consultation préalable
     - unité existante
     - unité non saturée
     """
@@ -100,21 +93,29 @@ def peut_etre_transfere_en_unite(
 
 
 # ============================================================
-# Contraintes ressources humaines
+# Contraintes de conformité RH salles d'attente
 # ============================================================
 
-def personnel_suffisant_pour_consultation(
+def salle_attente_conforme(
+    salle: Localisation,
     ressources: RessourcesService,
+    maintenant: datetime,
 ) -> bool:
     """
-    Règle organisationnelle :
-    - un médecin est obligatoire
-    - un infirmier OU un aide-soignant peut assister
+    Une salle d'attente est conforme si :
+    - elle est vide
+    - OU personnel présent
+    - OU absence de personnel < 15 minutes
     """
-    if not ressources.medecin_disponible:
+    sa = ressources.salles_attente[salle]
+
+    if sa.occupation == 0:
+        return True
+
+    if sa.personnel_present:
+        return True
+
+    if sa.derniere_presence_personnel is None:
         return False
 
-    return (
-        ressources.infirmier_disponible
-        or ressources.aide_soignant_disponible
-    )
+    return (maintenant - sa.derniere_presence_personnel) <= timedelta(minutes=15)
