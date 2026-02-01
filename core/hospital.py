@@ -3,58 +3,77 @@ from typing import Dict, Optional
 
 from core.patient import Patient
 from core.resources import RessourcesService
-from core.enums import EtatPatient, Localisation
+from core.enums import EtatPatient
 
 
 class HospitalSystem:
     """
     État global du service d'urgences.
-    Source unique de vérité pour :
-    - patients actifs
-    - ressources (humaines + physiques)
-    - temps courant (optionnel, utile pour simulation)
+
+    Responsabilités :
+    - stocker les patients
+    - stocker les ressources
+    - gérer le temps simulé
+    - calculer les métriques (IS)
     """
 
-    def __init__(self, capacite_unite: int = 5, now: Optional[datetime] = None):
+    def __init__(
+        self,
+        capacite_unite: int = 5,
+        minutes_par_tick: int = 5,
+        start_time: Optional[datetime] = None,
+    ):
+        # -------------------------
+        # État global
+        # -------------------------
         self.patients: Dict[str, Patient] = {}
         self.ressources = RessourcesService(capacite_unite=capacite_unite)
 
-        # Temps courant (utile pour simulation, logs, etc.)
-        self.now = now or datetime.now()
+        # -------------------------
+        # Temps simulé
+        # -------------------------
+        self.minutes_par_tick = minutes_par_tick
+        self.tick = 0
+
+        self.start_time = start_time or datetime.now()
+        self.now = self.start_time
 
     # ========================================================
-    # Gestion patients
+    # Gestion du temps
+    # ========================================================
+
+    def avancer_d_un_tick(self):
+        """
+        Avance le temps simulé d'un tick.
+        1 tick = minutes_par_tick minutes simulées.
+        """
+        self.tick += 1
+        self.now = self.start_time + timedelta(
+            minutes=self.tick * self.minutes_par_tick
+        )
+
+    # ========================================================
+    # Gestion des patients
     # ========================================================
 
     def ajouter_patient(self, patient: Patient):
         self.patients[patient.id] = patient
 
     def retirer_patient(self, patient_id: str):
-        """
-        Retire un patient de l'état global (ex : fin de parcours).
-        """
         if patient_id in self.patients:
             del self.patients[patient_id]
 
     def patients_actifs(self):
         """
-        Patients encore dans le système (pas SORTI / ORIENTE_EXTERIEUR).
+        Patients encore dans le système.
         """
         return [
             p for p in self.patients.values()
-            if p.etat_courant not in {EtatPatient.SORTI, EtatPatient.ORIENTE_EXTERIEUR}
+            if p.etat_courant not in {
+                EtatPatient.SORTI,
+                EtatPatient.ORIENTE_EXTERIEUR,
+            }
         ]
-
-    # ========================================================
-    # Temps simulation
-    # ========================================================
-
-    def avancer_temps(self, minutes: int):
-        """
-        Avance le temps de simulation (pas obligatoire si non simulé).
-        """
-        self.now = self.now.replace()  # no-op safe
-        self.now = self.now + timedelta(minutes=minutes)
 
     # ========================================================
     # Métriques
@@ -62,13 +81,7 @@ class HospitalSystem:
 
     def calculer_indice_saturation(self) -> float:
         """
-        Indice de Saturation (IS) basé sur l'occupation des salles d'attente.
-        Conformément au modèle : IS = (occupation totale SA) / (capacité totale SA)
-
-        Note :
-        - IS <= 1.0 : stable
-        - 1.0 < IS < 2.0 : tendu (si tu gardes cette graduation)
-        - IS >= 2.0 : critique (selon ta définition)
+        IS = occupation totale SA / capacité totale SA
         """
         occupation = self.ressources.occupation_sa()
         total_occ = sum(occupation.values())
@@ -83,19 +96,24 @@ class HospitalSystem:
 
         return round(total_occ / total_cap, 2)
 
-    def occupation_par_zone(self) -> dict:
+    def snapshot_etat(self) -> dict:
         """
-        Retourne une vue simple des occupations (utile pour logs/ML).
+        État compact du système à un instant donné.
+        Utile pour logs, ML, visualisation.
         """
-        occ_sa = {loc.value: n for loc, n in self.ressources.occupation_sa().items()}
-
         return {
-            "SA": occ_sa,
-            "UNITE": {
+            "tick": self.tick,
+            "time": self.now.isoformat(),
+            "indice_saturation": self.calculer_indice_saturation(),
+            "occupation_sa": {
+                loc.value: salle.occupation
+                for loc, salle in self.ressources.salles_attente.items()
+            },
+            "unites": {
                 spec.value: unite.patients_presents
                 for spec, unite in self.ressources.unites.items()
             },
-            "MEDECIN_DISPONIBLE": self.ressources.medecin_disponible,
-            "INFIRMIER_DISPONIBLE": self.ressources.infirmier_disponible,
-            "AIDE_SOIGNANT_DISPONIBLE": self.ressources.aide_soignant_disponible,
+            "medecin_disponible": self.ressources.medecin_disponible,
+            "infirmier_disponible": self.ressources.infirmier_disponible,
+            "aide_soignant_disponible": self.ressources.aide_soignant_disponible,
         }
