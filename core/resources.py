@@ -1,99 +1,44 @@
-from __future__ import annotations
+from typing import Dict
+from core.enums import Specialite
 
-from dataclasses import dataclass, field
-from typing import Optional, Dict
+class UniteHospitaliere:
+    def __init__(self, nom: Specialite, capacite_max: int):
+        self.nom = nom
+        self.capacite_max = capacite_max
+        self.patients_presents: int = 0
+        self.seuil_alerte = 0.9  # 90%
 
+    @property
+    def taux_occupation(self) -> float:
+        return self.patients_presents / self.capacite_max
 
-@dataclass(slots=True)
-class StaffMember:
-    """
-    Human resource model (doctor, nurse, nurse assistant).
-    """
+    @property
+    def est_saturee(self) -> bool:
+        return self.patients_presents >= self.capacite_max
 
-    staff_id: str
-    role: str  # "doctor" | "nurse" | "assistant"
-    available: bool = True
-    assigned_to: Optional[str] = None  # room_id / patient_id / task_id
+    @property
+    def alerte_seuil_atteint(self) -> bool:
+        return self.taux_occupation >= self.seuil_alerte
 
-    def assign(self, target_id: str) -> None:
-        self.available = False
-        self.assigned_to = target_id
+class RessourcesService:
+    def __init__(self):
+        # Configuration conforme au system_model.md
+        self.boxes_disponibles = 3
+        self.medecin_disponible = True
+        self.infirmiers_salle = 2
+        
+        # Unités de spécialité
+        self.unites: Dict[Specialite, UniteHospitaliere] = {
+            Specialite.CARDIOLOGIE: UniteHospitaliere(Specialite.CARDIOLOGIE, 5),
+            Specialite.NEUROLOGIE: UniteHospitaliere(Specialite.NEUROLOGIE, 5),
+            Specialite.PNEUMOLOGIE: UniteHospitaliere(Specialite.PNEUMOLOGIE, 5),
+            Specialite.ORTHOPEDIE: UniteHospitaliere(Specialite.ORTHOPEDIE, 5),
+        }
 
-    def release(self) -> None:
-        self.available = True
-        self.assigned_to = None
-
-
-@dataclass(slots=True)
-class ConsultationRoom:
-    """
-    Physical resource: consultation room.
-    A room is usable only if a supervising doctor is assigned.
-    """
-
-    room_id: str
-    available: bool = True
-    supervising_doctor_id: Optional[str] = None
-    current_patient_id: Optional[str] = None
-
-    def can_accept_patient(self) -> bool:
-        return self.available and self.supervising_doctor_id is not None
-
-    def assign_doctor(self, doctor_id: str) -> None:
-        self.supervising_doctor_id = doctor_id
-
-    def admit_patient(self, patient_id: str) -> None:
-        if not self.can_accept_patient():
-            raise ValueError("Room cannot accept patient: missing doctor or not available.")
-        self.available = False
-        self.current_patient_id = patient_id
-
-    def discharge_patient(self) -> None:
-        self.available = True
-        self.current_patient_id = None
-
-
-@dataclass(slots=True)
-class HospitalUnit:
-    """
-    Downstream unit with limited capacity (e.g., cardiology, critical care).
-    """
-
-    unit_id: str
-    specialty: str  # e.g., "cardiology"
-    capacity: int
-    occupancy: int = 0
-
-    def has_capacity(self) -> bool:
-        return self.occupancy < self.capacity
-
-    def admit(self) -> None:
-        if not self.has_capacity():
-            raise ValueError("Unit has no available capacity.")
-        self.occupancy += 1
-
-    def release(self) -> None:
-        if self.occupancy <= 0:
-            raise ValueError("Invalid release: occupancy already zero.")
-        self.occupancy -= 1
-
-
-@dataclass(slots=True)
-class ResourcePool:
-    """
-    Container for all resources.
-    """
-
-    staff: Dict[str, StaffMember] = field(default_factory=dict)
-    rooms: Dict[str, ConsultationRoom] = field(default_factory=dict)
-    units: Dict[str, HospitalUnit] = field(default_factory=dict)
-
-    def available_doctors(self) -> list[StaffMember]:
-        return [s for s in self.staff.values() if s.role == "doctor" and s.available]
-
-    def available_nurses(self) -> list[StaffMember]:
-        return [s for s in self.staff.values() if s.role == "nurse" and s.available]
-
-    def available_assistants(self) -> list[StaffMember]:
-        return [s for s in self.staff.values() if s.role == "assistant" and s.available]
-
+    def occuper_box(self):
+        if self.boxes_disponibles > 0:
+            self.boxes_disponibles -= 1
+            
+    def liberer_box(self):
+        if self.boxes_disponibles < 3:
+            self.boxes_disponibles += 1
