@@ -40,9 +40,9 @@ Le patient est l'entité centrale du système. Pour permettre l'exploitation par
 - `heure_arrivee` : timestamp d'arrivée.
 - `etat_courant` : état issu de la machine à états (voir section 3).
 - `localisation_courante`
-- `specialité_requise` : cardiologie, nurologie, pneumologie, orthopédie, aucune.
+- `specialité_requise` : cardiologie, neurologie, pneumologie, orthopédie, aucune.
 - `temps_attente`
-- `historique` (transitions d'états)
+- `historique` : transitions d'états.
 - `score_priorite`: calculé dynamiquement (gravité + temps d'attente)
 
 ---
@@ -91,7 +91,7 @@ Cet état constitue la **source unique de vérité** pour toutes les décisions.
 
 ## 3. Cycle de vie et états des patients
 
-Chaque patient suit un **cycle de vie à états finis**.
+Chaque patient suit un **cycle de vie à états finis**. Chaque transition est logguée (`logs/decisions.log`) pour l'explicabilité.
 
 ### 3.1 États possibles
 
@@ -116,28 +116,32 @@ Les transitions dépendent :
 
 Exemples de transitions :
 
-- `ARRIVÉ → EN_ATTENTE`
-- `EN_ATTENTE → EN_CONSULTATION`
-- `EN_CONSULTATION → EN_EXAMEN`
-- `EN_CONSULTATION → SORTI`
-- `EN_CONSULTATION → EN_ATTENTE_TRANSFERT`
-- `EN_ATTENTE_TRANSFERT → EN_UNITÉ`
+- `ARRIVÉ` → `EN_ATTENTE` (Triage)
+- `EN_ATTENTE` → `EN_CONSULTATION` (Affectation médecin + box)
+- `EN_CONSULTATION` → `EN_EXAMEN` (Si besoin d'investigation)
+- `EN_CONSULTATION` → `EN_ATTENTE_TRANSFERT` (Décision d'hospitalisation)
+- `EN_ATTENTE_TRANSFERT` → `EN_UNITÉ` (Transfert effectif vers spécialité)
+- `EN_CONSULTATION` → `SORTI`
+- `EN_UNITÉ` → `SORTI`
 
 ---
 
-## 4. Contraintes organisationnelles
+## 4. Contraintes organisationnelles (Règles strictes)
 
 Les contraintes suivantes sont **strictes** :
 
-1. Un patient doit obligatoirement voir un médecin **avant** un transfert vers une unité.
-2. Une unité hospitalière doit confirmer une **capacité disponible** avant d'accepter un patient.
-3. Une salle de consultation ne peut fonctionner sans médecin superviseur.
-4. Un infirmier ne peut quitter une salle supervisée au-delà d'une durée maximale.
-5. Les temps de transport sont fixes :
+1. **Validation médicale** : Un patient doit être passé par l'état `EN_CONSULTATION` avant tout transfert vers une unité.
+2. **Capacité des unités** : Une unité hospitalière doit confirmer une **capacité disponible** avant d'accepter un patient, i.e. aucun transfert vers `EN_UNITÉ` n'est possible si la capacité de l'unité est à 100% auquel cas le patient reste en `EN_ATTENTE_TRANSFERT`.
+3. **Ressources humaines**
 
-   - consultation : ~5 minutes
-   - unité hospitalière : ~45 minutes
-6. Aucune ressource ne peut être utilisée simultanément à deux endroits.
+   - Une salle de consultation ne peut fonctionner sans médecin superviseur.
+   - Un box occupé par un patient doit être attaché à un infirmier disponible.
+   - Aucune ressource ne peut être simultanément à deux endroits.
+4. Un infirmier ne peut quitter une salle supervisée au-delà d'une durée maximale.
+5. **Temps de transport fixes** :
+
+   - consultation : 5 minutes
+   - transfert unité : 45 minutes
 
 Toute décision violant une contrainte est **invalide**.
 
@@ -147,11 +151,10 @@ Toute décision violant une contrainte est **invalide**.
 
 ### 5.1 Ordre de priorité
 
-Les patients sont priorisés selon :
-
-1. Le niveau de gravité (ROUGE > JAUNE > VERT > GRIS)
-2. Le temps d'attente (à gravité égale)
-3. La compatibilité avec les ressources disponibles
+À chaque cycle (tick de simulation), l'ordonnanceur :
+1. **Priorise** : Trie les patients `EN_ATTENTE` par `niveau_de_gravite` (descendant : ROUGE > JAUNE > VERT > GRIS) puis par `temps_attente` (descendant à gravité égale).
+2. **Affecte** : Assign les boxes libres aux patients les plus prioritaires.
+3. **Vérifie les blocages** : Identifie les patients bloqués en `EN_ATTENTE_TRANSFERT` par manque de lits en aval.
 
 Les patients **GRIS** sont immédiatement orientés hors du système.
 
@@ -199,7 +202,26 @@ Elles ne pourront **jamais contourner** :
 
 ---
 
-## 8. Diagramme global du système
+## 8. Métriques et Indice de Saturation
+
+Le système calcule un **Indice de Saturation (IS)** servant de base à la classification ML :
+- **Stable** : IS ≤ 1.0 (Boxes disponibles).
+- **Tendu** : 1.0 ≤ IS < 2.0 (Files d'attente en formation).
+- **Critique** : IS ≥ 2.0 ou saturation d'une unité spéciale.
+
+---
+
+## 9. Traçabilité et Explicabilité
+
+Chaque événement système génète une entrée structurée :
+
+`[TIMESTAMP] [EVENT_TYPE] [PATIENT_ID] [DESCRIPTION] [DECISION_REASON]`
+
+*Exemple : "Patient PO1 déplacé en Box 1. Raison : Gravité ROUGE, priorité maximale."*
+
+Ces logs permettent au LLM de répondre à la question : *"Pourquoi ce patient attend-il encore ?*
+
+## 10. Diagramme global du système
 
 Le diagramme suivant synthétise les interactions principales.
 
@@ -223,7 +245,7 @@ flowchart TD
 
 ---
 
-## 9. Principes de conception
+## 11. Principes de conception
 
 - Modélisation explicite des états
 - Base déterministe et explicable
@@ -233,7 +255,7 @@ flowchart TD
 
 ---
 
-## 10. Limites du modèle
+## 12. Limites du modèle
 
 - Parcours médicaux simplifiés
 - Pas de variabilité comportementale humaine
@@ -244,7 +266,7 @@ Ces limites sont **volontaires** et cohérentes avec le cadre pédagogique.
 
 ---
 
-## 11. Rôle de ce document dans le projet
+## 13. Rôle de ce document dans le projet
 
 Ce document définit la **logique de référence** du système et contraint toutes les briques d'IA.
 
