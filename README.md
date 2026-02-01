@@ -271,7 +271,7 @@ emergency-agent-logistics/
 │
 └── assets/
     ├── diagrams/
-    └── screenshots/
+    └── images/
 ```
 
 ---
