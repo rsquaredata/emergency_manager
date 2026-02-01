@@ -79,9 +79,10 @@ class HospitalSystem:
     # Métriques
     # ========================================================
 
-    def calculer_indice_saturation(self) -> float:
+    def calculer_is_sa(self) -> float:
         """
-        IS = occupation totale SA / capacité totale SA
+        IS_SA = occupation totale des salles d'attente / capacité totale des salles d'attente
+        Indicateur local, borné.
         """
         occupation = self.ressources.occupation_sa()
         total_occ = sum(occupation.values())
@@ -95,16 +96,56 @@ class HospitalSystem:
             return 0.0
 
         return round(total_occ / total_cap, 2)
+    
+    def calculer_is_global(self) -> float:
+        """
+        IS_GLOBAL = backlog / capacité d'absorption totale.
+        Indicateur débordant.
+        """
+        backlog = sum(
+            1 for p in self.patients.values()
+            if p.etat_courant in [
+                EtatPatient.EN_ATTENTE,
+                EtatPatient.ATTENTE_TRANSFERT,
+            ]
+        )
+        cap_sa = sum(
+            salle.capacite_max for salle in self.ressources.salles_attente.values()
+        )
+        cap_aval = sum(
+            unite.capacite_mex for unite in self.ressources.unites.values()
+        )
+        denom = cap_sa + cap_aval
+        return round(backlog / denom, 2) if denom > 0 else 0.0
+    
+    def calculer_overflow_aval(self) -> float:
+        """
+        Overflow aval = patients en attente de transfert / capacité totale des unités aval
+        """
+        attente_transfert = sum(
+            1 for p in self.patients.values()
+            if p.etat_courant == EtatPatient.ATTENTE_TRANSFERT
+        )
+        cap_aval = sum(
+            unite.capacite_max for unite in self.ressources.unites.values()
+        )
+        return round(attente_transfert / cap_aval, 2) if cap_aval > 0 else 0.0
 
     def snapshot_etat(self) -> dict:
         """
         État compact du système à un instant donné.
-        Utile pour logs, ML, visualisation.
+        Sert de base unique pour logs, ML, visualisation.
         """
         return {
             "tick": self.tick,
             "time": self.now.isoformat(),
-            "indice_saturation": self.calculer_indice_saturation(),
+
+            # Indicateurs
+            "is_sa": self.calculer_is_sa(),
+            "is_global": self.calculer_is_global(),
+            "overflow_aval": self.calculer_overflow_aval(),
+
+            # Occupations
             "occupation_sa": {
                 loc.value: salle.occupation
                 for loc, salle in self.ressources.salles_attente.items()
@@ -113,6 +154,8 @@ class HospitalSystem:
                 spec.value: unite.patients_presents
                 for spec, unite in self.ressources.unites.items()
             },
+
+            # Ressources humaines
             "medecin_disponible": self.ressources.medecin_disponible,
             "infirmier_disponible": self.ressources.infirmier_disponible,
             "aide_soignant_disponible": self.ressources.aide_soignant_disponible,
