@@ -216,6 +216,7 @@ emergency-agent-logistics/
 │   └── workflows.py           # Orchestration / MCP
 │
 ├── core/
+│   ├── enums.py               # Gravité, état, localisation
 │   ├── patient.py             # Modèle Patient (états, transitions)
 │   ├── resources.py           # Salles, personnel, capacités
 │   ├── hospital.py            # État global du système
