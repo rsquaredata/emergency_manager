@@ -131,6 +131,9 @@ class RessourcesService:
         Affecte le médecin à la consultation.
         """
         self.medecin.affecter(Localisation.CONSULTATION)
+    
+    def liberer_medecin(self):
+        self.medecin.liberer()
 
     # ========================================================
     # Helpers RH
