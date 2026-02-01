@@ -4,49 +4,54 @@ from core.enums import (
     Gravite,
 )
 from core.constraints import (
-    doit_etre_oriente_exterieur,
-    peut_entrer_en_soins_critiques,
-    peut_entrer_en_consultation,
     peut_entrer_en_salle_attente,
+    peut_entrer_en_consultation,
+    peut_entrer_en_soins_critiques,
+    doit_etre_oriente_exterieur,
     peut_aller_en_attente_transfert,
     peut_etre_transfere_en_unite,
 )
 from core.patient import Patient
-from core.hospital import HospitalSystem
 
 
 class Scheduler:
     """
     Ordonnanceur déterministe de référence.
-    Applique exclusivement les règles définies dans constraints.py
+    Applique strictement les règles du system_model.
     """
 
-    def __init__(self, hospital: HospitalSystem):
+    def __init__(self, hospital):
         self.hospital = hospital
 
-    # ========================================================
-    # Ordonnancement principal (1 tick de simulation)
-    # ========================================================
+    # ============================================================
+    # Cycle principal
+    # ============================================================
 
     def executer_cycle(self):
         """
         Exécute un cycle complet de décisions :
-        1. Orientation initiale (IOA)
-        2. Accès consultation ou SA
-        3. Transferts vers unités si possible
+        1. Traitement des arrivées (IOA)
+        2. Orientation consultation ou salles d'attente
+        3. Transferts vers unités aval si possible
         """
-
         self._traiter_arrivees()
         self._traiter_transferts_unites()
 
-    # ========================================================
+    # ============================================================
     # Étape 1 — Arrivées et triage IOA
-    # ========================================================
+    # ============================================================
 
     def _traiter_arrivees(self):
-        for patient in self._patients_par_etat(EtatPatient.ARRIVE):
+        """
+        Applique les règles de triage aux patients ARRIVE.
+        """
+        for patient in self.hospital.patients.values():
+            if patient.etat_courant != EtatPatient.ARRIVE:
+                continue
 
+            # ----------------------------
             # Cas GRIS : sortie immédiate
+            # ----------------------------
             if doit_etre_oriente_exterieur(patient):
                 patient.transition_to(
                     EtatPatient.ORIENTE_EXTERIEUR,
@@ -55,7 +60,9 @@ class Scheduler:
                 )
                 continue
 
-            # Cas ROUGE : soins critiques directs
+            # ----------------------------
+            # Cas ROUGE : soins critiques
+            # ----------------------------
             if peut_entrer_en_soins_critiques(patient):
                 patient.transition_to(
                     EtatPatient.SOINS_CRITIQUES,
@@ -64,13 +71,12 @@ class Scheduler:
                 )
                 continue
 
+            # ----------------------------
             # Cas VERT / JAUNE : consultation prioritaire
+            # ----------------------------
             if peut_entrer_en_consultation(self.hospital.ressources):
-                # Affectation médecin + personnel
+                # Affectation explicite du médecin
                 self.hospital.ressources.affecter_medecin_consultation()
-                self.hospital.ressources.affecter_personnel_salle(
-                    Localisation.CONSULTATION
-                )
 
                 patient.transition_to(
                     EtatPatient.EN_CONSULTATION,
@@ -79,51 +85,29 @@ class Scheduler:
                 )
                 continue
 
-            # Sinon : passage en salle d'attente (ordre SA3 -> SA2 -> SA1)
+            # ----------------------------
+            # Sinon : salle d'attente
+            # ----------------------------
             self._placer_en_salle_attente(patient)
 
-    # ========================================================
-    # Étape 2 — Transferts vers unités hospitalières
-    # ========================================================
-
-    def _traiter_transferts_unites(self):
-        for patient in self._patients_par_etat(EtatPatient.ATTENTE_TRANSFERT):
-
-            if peut_etre_transfere_en_unite(patient, self.hospital.ressources):
-                # Libération SA
-                if patient.est_en_salle_attente():
-                    self.hospital.ressources.sortir_de_salle_attente(
-                        patient.localisation_courante
-                    )
-
-                # Admission unité
-                unite = self.hospital.ressources.unites[
-                    patient.specialite_requise
-                ]
-                unite.admettre_patient()
-
-                patient.transition_to(
-                    EtatPatient.EN_UNITE,
-                    Localisation.UNITE,
-                    "Transfert effectif vers unité hospitalière",
-                )
-
-    # ========================================================
-    # Helpers internes
-    # ========================================================
+    # ============================================================
+    # Placement en salle d'attente
+    # ============================================================
 
     def _placer_en_salle_attente(self, patient: Patient):
         """
         Place un patient dans la première salle d'attente disponible.
+        Ordre volontaire : SA3 → SA2 → SA1 (logique de délestage).
         """
-        for salle in [
+        for salle in (
             Localisation.SA3,
             Localisation.SA2,
             Localisation.SA1,
-        ]:
-            if peut_entrer_en_salle_attente(salle, self.hospital.ressources):
+        ):
+            if peut_entrer_en_salle_attente(
+                salle, self.hospital.ressources
+            ):
                 self.hospital.ressources.entrer_en_salle_attente(salle)
-                self.hospital.ressources.affecter_personnel_salle(salle)
 
                 patient.transition_to(
                     EtatPatient.EN_ATTENTE,
@@ -132,53 +116,36 @@ class Scheduler:
                 )
                 return
 
-        # Cas extrême : aucune SA disponible
+        # Si aucune salle n'est disponible → stagnation externe
         patient.transition_to(
-            EtatPatient.EN_ATTENTE,
+            EtatPatient.ATTENTE_TRANSFERT,
             Localisation.EXTERIEUR,
-            "Aucune salle d'attente disponible (saturation totale)",
+            "Aucune salle d'attente disponible",
         )
 
-    def _patients_par_etat(self, etat: EtatPatient):
-        return [
-            p for p in self.hospital.patients.values()
-            if p.etat_courant == etat
-        ]
+    # ============================================================
+    # Étape 2 — Transferts vers unités aval
+    # ============================================================
 
-    # ========================================================
-    # Orientation post-consultation (appel explicite)
-    # ========================================================
-
-    def orienter_apres_consultation(
-        self,
-        patient_id: str,
-        hospitalisation: bool,
-    ):
+    def _traiter_transferts_unites(self):
         """
-        Applique la décision médicale après consultation.
+        Tente de transférer les patients en attente de transfert
+        vers les unités hospitalières si possible.
         """
-        patient = self.hospital.patients[patient_id]
+        for patient in self.hospital.patients.values():
+            if patient.etat_courant != EtatPatient.ATTENTE_TRANSFERT:
+                continue
 
-        # Libération ressources consultation
-        if patient.localisation_courante == Localisation.CONSULTATION:
-            self.hospital.ressources.liberer_medecin()
-            # NOTE : libération personnel salle possible ici
+            if peut_etre_transfere_en_unite(
+                patient, self.hospital.ressources
+            ):
+                unite = self.hospital.ressources.unites[
+                    patient.specialite_requise
+                ]
+                unite.admettre_patient()
 
-        if hospitalisation:
-            if not peut_aller_en_attente_transfert(patient):
-                raise RuntimeError(
-                    "Transfert interdit : consultation préalable absente"
+                patient.transition_to(
+                    EtatPatient.EN_UNITE,
+                    Localisation.UNITE,
+                    "Transfert vers unité hospitalière",
                 )
-
-            self._placer_en_salle_attente(patient)
-            patient.transition_to(
-                EtatPatient.ATTENTE_TRANSFERT,
-                patient.localisation_courante,
-                "Décision hospitalisation prise",
-            )
-        else:
-            patient.transition_to(
-                EtatPatient.SORTI,
-                Localisation.EXTERIEUR,
-                "Consultation terminée – sortie",
-            )
