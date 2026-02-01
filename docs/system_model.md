@@ -213,7 +213,7 @@ Le système calcule un **Indice de Saturation (IS)** servant de base à la class
 
 ## 9. Traçabilité et Explicabilité
 
-Chaque événement système génète une entrée structurée :
+Chaque événement système génère une entrée structurée :
 
 `[TIMESTAMP] [EVENT_TYPE] [PATIENT_ID] [DESCRIPTION] [DECISION_REASON]`
 
