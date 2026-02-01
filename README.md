@@ -192,18 +192,86 @@ Le système expose des métriques **métier** et **système** :
 ## Structure du projet
 
 ```
-emergency_manager/
+emergency-agent-logistics/
 │
-├── app/            # Interface web
-├── agents/         # Logique agentique
-├── core/           # Modèle du système (sans IA)
-├── ml/             # Modules de machine learning
-├── rag/            # Pipeline RAG
-├── llm/            # Client LLM et prompts
-├── simulation/     # Scénarios et générateurs
-├── metrics/        # Supervision et tableaux de bord
-├── docs/           # Architecture et méthodologie
-└── tests/          # Tests unitaires
+├── README.md
+├── requirements.txt
+├── pyproject.toml
+├── .gitignore
+│
+├── app/
+│   ├── main.py                # Point d’entrée Streamlit / Gradio
+│   ├── pages/
+│   │   ├── simulation.py      # Ajout patients / état du service
+│   │   ├── chat.py            # Chat LLM
+│   │   └── dashboard.py       # Métriques & visualisations
+│   │
+│   └── ui_utils.py
+│
+├── agents/
+│   ├── base_agent.py
+│   ├── logistics_agent.py     # Agent principal (Urgence Manager)
+│   ├── triage_agent.py        # Agent triage (simplifié)
+│   ├── monitoring_agent.py    # Surveillance & alertes
+│   └── workflows.py           # Orchestration / MCP
+│
+├── core/
+│   ├── patient.py             # Modèle Patient (états, transitions)
+│   ├── resources.py           # Salles, personnel, capacités
+│   ├── hospital.py            # État global du système
+│   ├── scheduler.py           # Règles & priorisation
+│   └── constraints.py         # Contraintes métier explicites
+│
+├── ml/
+│   ├── features.py
+│   ├── model.py               # Modèle ML
+│   ├── train.py
+│   ├── evaluate.py
+│   └── baseline.py            # Sans ML (comparaison)
+│
+├── rag/
+│   ├── documents/
+│   │   ├── rules.md
+│   │   ├── triage_levels.md
+│   │   └── hospital_process.md
+│   │
+│   ├── index.py
+│   ├── retriever.py
+│   └── prompts.py
+│
+├── llm/
+│   ├── client.py              # Wrapper LLM
+│   ├── prompts.py
+│   └── explain.py             # Explication des décisions
+│
+├── simulation/
+│   ├── scenarios.py           # Cas prédéfinis
+│   ├── generators.py          # Arrivées aléatoires
+│   └── replay.py              # Rejouer une simulation
+│
+├── metrics/
+│   ├── business_metrics.py
+│   ├── system_metrics.py
+│   └── eco_metrics.py
+│
+├── logs/
+│   └── decisions.log
+│
+├── tests/
+│   ├── test_patient.py
+│   ├── test_scheduler.py
+│   └── test_constraints.py
+│
+├── docs/
+│   ├── architecture.md
+│   ├── agents.md
+│   ├── workflows.md
+│   ├── limitations.md
+│   └── system_model.md
+│
+└── assets/
+    ├── diagrams/
+    └── screenshots/
 ```
 
 ---
