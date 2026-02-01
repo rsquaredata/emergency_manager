@@ -25,7 +25,7 @@ Le **diagnostic médical** est explicitement hors périmètre. Le système trait
 
 ## 2. Entités principales
 
-### 2.1 Patient
+### 2.1. Patient
 
 Le patient est l'entité centrale du système. Pour permettre l'exploitation par les modèles de ML, les attributs sont typés.
 
@@ -47,7 +47,7 @@ Le patient est l'entité centrale du système. Pour permettre l'exploitation par
 
 ---
 
-### 2.2 Ressources
+### 2.2. Ressources
 
 Les ressources sont **limitées** et **partagées**. Leur occupation définit l'état de stress du système.
 
@@ -77,7 +77,7 @@ Chaque unité est caractérisée par :
 
 ---
 
-### 2.3 Service d'urgences (état global)
+### 2.3. Service d'urgences (état global)
 
 Le service d'urgences est modélisé comme un **conteneur d'état global** regroupant :
 
@@ -93,7 +93,7 @@ Cet état constitue la **source unique de vérité** pour toutes les décisions.
 
 Chaque patient suit un **cycle de vie à états finis**. Chaque transition est logguée (`logs/decisions.log`) pour l'explicabilité.
 
-### 3.1 États possibles
+### 3.1. États possibles
 
 - `ARRIVÉ`
 - `EN_ATTENTE`
@@ -106,7 +106,7 @@ Chaque patient suit un **cycle de vie à états finis**. Chaque transition est l
 
 ---
 
-### 3.2 Transitions d'états
+### 3.2. Transitions d'états
 
 Les transitions dépendent :
 
@@ -147,9 +147,9 @@ Toute décision violant une contrainte est **invalide**.
 
 ---
 
-## 5. Règles de priorité et d'ordonnancement
+## 5. Règles de priorité, d'ordonnancement et de sortie
 
-### 5.1 Ordre de priorité
+### 5.1. Ordre de priorité
 
 À chaque cycle (tick de simulation), l'ordonnanceur :
 1. **Priorise** : Trie les patients `EN_ATTENTE` par `niveau_de_gravite` (descendant : ROUGE > JAUNE > VERT > GRIS) puis par `temps_attente` (descendant à gravité égale).
@@ -160,7 +160,7 @@ Les patients **GRIS** sont immédiatement orientés hors du système.
 
 ---
 
-### 5.2 Logique d'ordonnancement (baseline)
+### 5.2. Logique d'ordonnancement (baseline)
 
 À chaque étape décisionnelle :
 
@@ -171,6 +171,45 @@ Les patients **GRIS** sont immédiatement orientés hors du système.
 5. Exécution des transitions valides
 
 Cette logique définit le **scheduler déterministe de référence**.
+
+---
+
+### 5.2. Règles de sorties - Modélisation des durées de séjour
+
+#### a) Modélisation des durées de séjour (sorties du système)
+
+Afin d’éviter une accumulation monotone des patients dans les unités aval, le modèle intègre une modélisation explicite des **durées de séjour**, fondée sur des **statistiques hospitalières françaises officielles**.
+
+##### Hospitalisation en unité spécialisée
+
+Selon la DREES, la durée moyenne d’un séjour en hospitalisation complète (en dehors de la psychiatrie et des soins de longue durée) est d’environ **5,5 jours** en France.
+
+> Source :  
+> DREES — *Panorama des établissements de santé 2025*  
+> https://drees.solidarites-sante.gouv.fr/publications-communique-de-presse-documents-de-reference/panoramas-de-la-drees/250522_Panorama_etablissements-de-sante2025
+
+Dans le modèle, la durée de séjour en unité est simulée par une **distribution log-normale**, afin de refléter la variabilité réelle des parcours hospitaliers, tout en conservant la moyenne observée.
+
+##### Soins critiques (réanimation)
+
+La DREES indique que la durée moyenne de séjour en soins critiques en France est de **5,2 jours**.
+
+> Source :  
+> DREES — *Fiche 13 — L’activité et les capacités d’accueil en soins critiques* (2024)  
+> https://drees.solidarites-sante.gouv.fr/sites/default/files/2024-07/ES24%20-%20Fiche%2013%20-%20L%E2%80%99activit%C3%A9%20et%20les%20capacit%C3%A9s%20d%E2%80%99accueil%20en%20soins%20critiques.pdf
+
+La durée de séjour en soins critiques est également simulée par une **distribution log-normale**, avec une variance plus élevée afin de représenter la forte hétérogénéité des situations cliniques.
+
+##### Règle de sortie
+
+Un patient quitte une unité (ou les soins critiques) lorsque le temps écoulé depuis son entrée dépasse la durée de séjour tirée aléatoirement au moment de l’admission.
+
+Cette règle permet :
+- la libération progressive des lits,
+- l’apparition de phases de désaturation,
+- l’observation de régimes transitoires et stationnaires du système.
+
+Les paramètres de durée constituent des **hypothèses contrôlées**, explicitement documentées et traçables.
 
 ---
 
@@ -202,7 +241,7 @@ Elles ne pourront **jamais contourner** :
 
 ---
 
-## 8. Métriques et Indice de Saturation
+## 8. Métriques et Indices de Saturation
 
 Le système calcule un **Indice de Saturation (IS)** servant de base à la classification ML :
 - **Stable** : IS ≤ 1.0 (Boxes disponibles).
