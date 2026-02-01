@@ -1,50 +1,44 @@
-from __future__ import annotations
-
-from dataclasses import dataclass, field
 from datetime import datetime
-from typing import Optional, List, Tuple
+from typing import List, Optional, Dict
+from core.enums import Gravite, EtatPatient, Specialite
 
-from core.enums import SeverityLevel, PatientState, Location
-
-
-Transition = Tuple[datetime, PatientState, PatientState, str]
-
-
-@dataclass(slots=True)
 class Patient:
-    """
-    Core patient entity.
+    def __init__(
+        self, 
+        patient_id: str, 
+        gravite: Gravite, 
+        specialite: Specialite = Specialite.AUCUNE
+    ):
+        self.id = patient_id
+        self.gravite = gravite
+        self.specialite_requise = specialite
+        self.heure_arrivee = datetime.now()
+        self.etat_courant = EtatPatient.ARRIVE
+        self.historique: List[Dict] = []
+        
+        # Initialisation de l'historique
+        self._enregistrer_transition(EtatPatient.ARRIVE, "Arrivée initiale")
 
-    This class is part of the deterministic (no-AI) system model.
-    It tracks severity, current state, location, and a transition history.
-    """
+    def _enregistrer_transition(self, nouvel_etat: EtatPatient, raison: str):
+        timestamp = datetime.now().isoformat()
+        self.historique.append({
+            "timestamp": timestamp,
+            "etat": nouvel_etat.value,
+            "raison": raison
+        })
+        # Format de log pour le fichier decisions.log
+        print(f"[{timestamp}] [TRANSITION] {self.id} -> {nouvel_etat.value}. Raison: {raison}")
 
-    patient_id: str
-    severity: SeverityLevel
-    arrival_time: datetime
+    def transition_to(self, nouvel_etat: EtatPatient, raison: str):
+        """Change l'état du patient et archive le mouvement."""
+        self.etat_courant = nouvel_etat
+        self._enregistrer_transition(nouvel_etat, raison)
 
-    state: PatientState = PatientState.ARRIVED
-    location: Location = Location.TRIAGE
+    @property
+    def temps_attente_minutes(self) -> float:
+        delta = datetime.now() - self.heure_arrivee
+        return round(delta.total_seconds() / 60, 2)
 
-    required_specialty: Optional[str] = None  # e.g., "cardiology"
-    waiting_time_minutes: float = 0.0
-
-    history: List[Transition] = field(default_factory=list)
-
-    def transition_to(
-        self,
-        new_state: PatientState,
-        new_location: Location,
-        now: datetime,
-        reason: str,
-    ) -> None:
-        """Record a state transition with a human-readable reason."""
-        old_state = self.state
-        self.state = new_state
-        self.location = new_location
-        self.history.append((now, old_state, new_state, reason))
-
-    def is_active(self) -> bool:
-        """Active patients are those not discharged/left."""
-        return self.state not in {PatientState.DISCHARGED, PatientState.LEFT}
-
+    def get_score_priorite(self) -> float:
+        """Calcul déterministe de la priorité."""
+        return (self.gravite.value * 100) + self.temps_attente_minutes
