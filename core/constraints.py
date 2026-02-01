@@ -1,6 +1,5 @@
 from core.enums import (
     Localisation,
-    EtatPatient,
     Gravite,
     Specialite,
 )
@@ -17,13 +16,10 @@ def peut_entrer_en_salle_attente(
     ressources: RessourcesService,
 ) -> bool:
     """
-    Vérifie si une salle d'attente dispose d'une capacité disponible.
+    Vérifie si une salle d'attente peut accueillir un patient.
     Contrainte stricte : capacité maximale non dépassable.
     """
-    return (
-        salle in ressources.capacites_sa
-        and ressources.occupation_sa[salle] < ressources.capacites_sa[salle]
-    )
+    return ressources.salle_disponible(salle)
 
 
 # ============================================================
@@ -36,7 +32,7 @@ def peut_entrer_en_consultation(
     """
     Une consultation nécessite :
     - un médecin disponible
-    - aucune double affectation
+    - aucun doublon d'affectation
     """
     return ressources.medecin_disponible
 
@@ -79,7 +75,6 @@ def peut_aller_en_attente_transfert(
     """
     Contrainte STRICTE du modèle :
     - le patient doit avoir consulté
-    - une décision médicale est supposée prise
     """
     return patient.a_consulte()
 
@@ -90,8 +85,8 @@ def peut_etre_transfere_en_unite(
 ) -> bool:
     """
     Conditions nécessaires pour un transfert effectif :
-    - patient éligible au transfert (consultation préalable)
-    - unité correspondant à la spécialité existante
+    - consultation préalable obligatoire
+    - unité existante
     - unité non saturée
     """
     if not patient.est_eligible_transfert_unite():
@@ -105,7 +100,7 @@ def peut_etre_transfere_en_unite(
 
 
 # ============================================================
-# Contraintes ressources humaines (anticipation)
+# Contraintes ressources humaines
 # ============================================================
 
 def personnel_suffisant_pour_consultation(
@@ -119,6 +114,7 @@ def personnel_suffisant_pour_consultation(
     if not ressources.medecin_disponible:
         return False
 
-    # Anticipation du modèle RH :
-    # un aide-soignant peut remplacer un infirmier
-    return ressources.infirmier_disponible or ressources.aide_soignant_disponible
+    return (
+        ressources.infirmier_disponible
+        or ressources.aide_soignant_disponible
+    )
