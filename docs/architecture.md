@@ -5,8 +5,8 @@ graph TD
 
     %% Flux Directs depuis Triage
     IOA -->|GRIS| Reorient[Réorientation / Consult. Externes]
-    IOA -->|JAUNE/ROUGE| Critical[Soins Critiques]
-    IOA -->|VERT| Consult[Zone Consultations]
+    IOA -->|ROUGE| Critical[Soins Critiques]
+    IOA -->|VERT/JAUNE| Consult[Zone Consultations]
     IOA -->|Saturation/Attente| SA
 
     %% Réorientation vers Sortie
