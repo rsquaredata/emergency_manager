@@ -160,3 +160,20 @@ class HospitalSystem:
             "infirmier_disponible": self.ressources.infirmier_disponible,
             "aide_soignant_disponible": self.ressources.aide_soignant_disponible,
         }
+    
+    def _compter_patients_par_etat(self) -> dict:
+        compteurs = {
+            EtatPatient.ARRIVE: 0,
+            EtatPatient.EN_ATTENTE: 0,
+            EtatPatient.EN_CONSULTATION: 0,
+            EtatPatient.ATTENTE_TRANSFERT: 0,
+            EtatPatient.EN_UNITE: 0,
+            EtatPatient.SORTI: 0,
+            EtatPatient.ORIENTE_EXTERIEUR: 0,
+        }
+
+        for p in self.patients.values():
+            if p.etat_courant in compteurs:
+                compteurs[p.etat_courant] += 1
+
+        return compteurs
