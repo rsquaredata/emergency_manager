@@ -113,7 +113,7 @@ class HospitalSystem:
             salle.capacite_max for salle in self.ressources.salles_attente.values()
         )
         cap_aval = sum(
-            unite.capacite_mex for unite in self.ressources.unites.values()
+            unite.capacite_max for unite in self.ressources.unites.values()
         )
         denom = cap_sa + cap_aval
         return round(backlog / denom, 2) if denom > 0 else 0.0
