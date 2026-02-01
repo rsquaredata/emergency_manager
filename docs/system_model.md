@@ -10,22 +10,16 @@ Ses objectifs sont de :
 - fournir une base déterministe, explicable et vérifiable,
 - servir de fondation stable pour l'intégration ultérieure du machine learning et des LLM.
 
-> **Point clé**
-> Toutes les décisions décrites dans ce document peuvent être prises **sans IA**.  
-> Les briques d'IA viennent **augmenter** le système, jamais s'y substituer.
+> **Point clé**  
+> Toutes les décisions décrites dans ce document peuvent être prises **sans IA**. Les briques d'IA viennent **augmenter** le système, jamais s'y substituer.
 
 ---
 
 ## 1. Périmètre et hypothèses
 
-Le système modélisé représente :
+Le système modélisé représente un **service d'urgences unique**  disposant d'un ensemble **fini de ressources** (salles, personnel, unités) et fonctionnant sous des **contraintes organisationnelles strictess**.
 
-- un **service d'urgences unique**,
-- disposant d'un ensemble **fini de ressources** (salles, personnel, unités),
-- fonctionnant sous des **contraintes organisationnelles réalistes mais simplifiées**.
-
-Le **diagnostic médical** est explicitement hors périmètre.  
-Le système traite uniquement de **logistique, de priorisation et de gestion des flux**.
+Le **diagnostic médical** est explicitement hors périmètre. Le système traite uniquement de **logistique, de priorisation et de gestion des flux**.
 
 ---
 
@@ -33,37 +27,36 @@ Le système traite uniquement de **logistique, de priorisation et de gestion des
 
 ### 2.1 Patient
 
-Le patient est l'entité centrale du système.
+Le patient est l'entité centrale du système. Pour permettre l'exploitation par les modèles de ML, les attributs sont typés.
 
 **Attributs**
 
-- `id`
-- `niveau_gravité` ∈ {GRIS, VERT, JAUNE, ROUGE}
-- `heure_arrivée`
-- `état_courant`
+- `id` : identifiant unique
+- `niveau_gravite` : valeur catégorielle numérique pour le ML :
+    - **3 - ROUGE** : urgence vitale.
+    - **2 - JAUNE** : urgent non vital.
+    - **1 - VERT** : non urgent.
+    - **0  - GRIS** : orientation extérieure / ne nécessite pas de prise en charge aux urgences.
+- `heure_arrivee` : timestamp d'arrivée.
+- `etat_courant` : état issu de la machine à états (voir section 3).
 - `localisation_courante`
-- `spécialité_requise` (optionnel)
+- `specialité_requise` : cardiologie, nurologie, pneumologie, orthopédie, aucune.
 - `temps_attente`
 - `historique` (transitions d'états)
-
-**Niveaux de gravité**
-
-* **GRIS** : ne nécessite pas une prise en charge aux urgences
-* **VERT** : non urgent
-* **JAUNE** : urgent mais non vital
-* **ROUGE** : urgence potentiellement vitale
+- `score_priorite`: calculé dynamiquement (gravité + temps d'attente)
 
 ---
 
 ### 2.2 Ressources
 
-Les ressources sont **limitées** et **partagées**.
+Les ressources sont **limitées** et **partagées**. Leur occupation définit l'état de stress du système.
 
-#### a) Ressources humaines
+### a) Ressources humaines
 
-- médecins
-- infirmier·e·s
-- aides-soignant·e·s
+- 1 médecin (Consultation)
+- 1 infirmier (Triage)
+- 2 infirmiers (Salles)
+- 2 aide-soignants
 
 Chaque ressource humaine possède :
 
@@ -72,14 +65,15 @@ Chaque ressource humaine possède :
 
 #### b) Ressources physiques
 
-- salles de consultation
-- salles de soins critiques
+- 3 salles d'attente
+- 1 salle de consultation
+- 1 salle de soins critiques
 - unités hospitalières (cardiologie, pneumologie, neurologie, orthopédie)
 
 Chaque unité est caractérisée par :
 
-- une capacité maximale,
-- un taux d'occupation courant.
+- une capacité maximale (ex.: 5 lits),
+- un seuil d'alerte (**90%**) qui déclenche des logs de saturation.
 
 ---
 
