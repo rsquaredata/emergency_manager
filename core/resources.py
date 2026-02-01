@@ -177,6 +177,9 @@ class RessourcesService:
     # ========================================================
 
     def salle_disponible(self, localisation: Localisation) -> bool:
+        """
+        Indique si une salle d'attente a encore de la capacité.
+        """
         return not self.salles_attente[localisation].est_saturee
 
     def entrer_en_salle_attente(self, localisation: Localisation):
