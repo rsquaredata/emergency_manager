@@ -43,7 +43,7 @@ class Scheduler:
     # ============================================================
 
     def _traiter_arrivees(self):
-        for patient in self.hospital.patients.values():
+        for patient in list(self.hospital.patients.values()):
             if patient.etat_courant != EtatPatient.ARRIVE:
                 continue
 
@@ -58,6 +58,8 @@ class Scheduler:
 
             # ROUGE -> soins critiques
             if peut_entrer_en_soins_critiques(patient):
+                self.hospital.ressources.admettre_soins_critiques()
+
                 patient.tick_entree = self.hospital.tick
                 patient.duree_sejour = tirer_duree_sejour(
                     TypeSejour.SOINS_CRITIQUES
@@ -167,7 +169,7 @@ class Scheduler:
     # ============================================================
 
     def _traiter_transferts_unites(self):
-        for patient in self.hospital.patients.values():
+        for patient in list(self.hospital.patients.values()):
             if patient.etat_courant != EtatPatient.ATTENTE_TRANSFERT:
                 continue
 
@@ -194,7 +196,7 @@ class Scheduler:
         """
         Gère les sorties des patients après durée de séjour (unités et soins critiques).
         """
-        for patient in self.hospital.patients.values():
+        for patient in list(self.hospital.patients.values()):
 
             if patient.etat_courant not in (
                 EtatPatient.EN_UNITE,
